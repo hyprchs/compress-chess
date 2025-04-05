@@ -48,39 +48,28 @@ class MoveEncodingOption(StrEnum):
           in their symmetry group instead of 8. This means we run out of 8-bit prefixes too early, counterintuitively.
           Here's the math:
           
-            - There are 1924 actions total (see my chess-action-space repo)
-            - Moves on either long diagonal have only 4 moves in their symmetry group - there are 
-              8 * 7 * 2 = 112 of those. We need 112 / 4 = 28 8-bit base numbers to represent them.
-            - The underpromotion action space is (8 + 7 + 7) moves * 2 sides * 3 pieces = 132, but by checking the
-              turn while encoding/decoding, we can effectively reduce it by half to 66. It would be nice to assign
-              each underpromotion's (from_sq, to_sq) pair an 8-bit base so we can easily distinguish them from 
-              non-underpromotions, including regular moves and the "default" queen promotion, since then we
-              could use the next 2 bits to specify the underpromotion piece. This means we should conceptualize
-              underpromotion moves as having no symmetries: each movement is unique. So we need to consume 
-              (8 + 7 + 7) = 22 more 8-bit bases here. The total is now 28 + 22 = 50.
-            - All other moves of the 1924 have 8 moves in their symmetry group. There are 1924 - 112 - 132 = 1680
-              of them, so we need 1680 / 8 = 210 8-bit bases to represent them. The final total is 260, just over 
-              2 ** 8 = 256.
-              
-          To fix, we would have to be smart about which moves consume 9 bits. While encoding and decoding, we would
-          have to know based on only the first 8 bits whether that base is one that requires 9 bits to distinguish.
-          We cannot just continue assigning the binary representation of a gensym-ed number once it hits 9 bits long
-          because the first 8 of those bits will already have been generated and assigned to some other move.
-          
-          We should probably choose 4 relatively uncommon base moves (from 4 different symmetry groups) whose 8-bit 
-          prefixes make up a special case, where a 9th bit is read to distinguish the base move. Then the same scheme 
-          applies where the next 3 bits determine the symmetries to be applied to the base move.
-          
-          Another option, which seems inherently worse, is to use another bit to represent moves where the 
-          (from_sq, to_sq) pair is the same as that of an underpromotion move for the side to move. If the bit is 
-          a 0, we can say the move is a non-underpromotion; if it's a 1, it's an underpromotion and the next 2 bits 
-          should determine the piece. I don't think this will offer maximal compression since it requires an extra bit
-          each time a piece is moved from the 7th to the 8th rank (except for knights) from the POV of the side to move
-          (not that uncommon, especially in endgames).
-          
-          A hacky option is to not care about ex. capturing underpromotions onto a corner squares, which would 
-          free 4 of the 260 8-bit bases. This means [b7a8, b2a1, g7h8, g2h1]=[R, B, N] would encode to 
-          [b7a8, b2a1, g7h8, g2h1]=Q. We surely wouldn't miss many moves, but the ones we do might be brilliant.
+            - There are `1924` actions total (see my chess-action-space repo). This counts every
+              (from_sq, to_sq) pair that would be a legal move for either a queen or a knight, and
+              assigns `132 = (8 + 7 + 7) * 3 pieces * 2 colors` to underpromotions, meaning they are considered
+              distinct moves from their corresponding queen promotions.
+            - Moves on either long diagonal have only 4 moves in their symmetry group—there are 
+              `112 = 8 * 7 * 2` of these. We need `28 = 112 / 4` 8-bit base numbers to represent them.
+            - The total underpromotion action space is `132 = (8 + 7 + 7) moves * 2 sides * 3 pieces`. Again, this number
+              considers underpromotions to be separate actions from their corresponding non-underpromotion moves with the same
+              (from_sq, to_sq) pair. This is desirable because then we are not forced to write and consume another bit
+              when encoding/decoding every move that is a promotion to distinguish an underpromotion from a much more common
+              queen promotion. Additionally, by checking the turn while encoding/decoding, we can effectively reduce
+              this space by half to `66 = 132 / 2`. This means we should conceptualize underpromotion moves as having only
+              a single left-right symmetry axis—the diagonal symmetry axis would map the space to (from_sq, to_sq) pairs
+              that are either on the left/right sides of the board where pawns can't promote, or map the pair to itself in the
+              case of an underpromotion on the long diagonal of the axis; and the up-down symmetry axis would be redundant
+              when we already know the turn by tracking the board state, since one color's pawns can only promote in one direction.
+              Therefore, underpromotions only need to consume `11 = (8 + 7 + 7) / 2 symmetries` 8-bit bases. The running total
+              for the number of 8-bit bases is now `39 = 28 long-diag moves + 11 underpromotions`.
+            - All other moves of the 1924 total action space must have 8 moves in their symmetry group. There are 
+              `1680 = 1924 - 112 long-diag moves - 132 underpromotions` of these moves, so we need `210 = 1680 / 8` 8-bit bases
+              to represent them. The final total is `249 = 210 eight-fold moves + 28 long-diag moves + 11 underpromotions`,
+              which is conveniently just under the maximum number of numbers representable in 8 bits, `256 = 2 ** 8`.
     '''
     # map_to_action_space_8fold_symmetry = 'map_to_action_space_8fold_symmetry'
     # """
